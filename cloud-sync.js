@@ -1,5 +1,5 @@
 const config = window.brackenSupabase;
-const ui = Object.fromEntries(['login', 'status', 'upload', 'retry', 'load', 'out']
+const ui = Object.fromEntries(['login', 'signin', 'account', 'status', 'upload', 'retry', 'load', 'out']
   .map(name => [name, document.querySelector('#cloud-' + name)]));
 const importButton = document.querySelector('#import');
 let client, owner, revision, draftKey, timer;
@@ -107,8 +107,9 @@ async function connect(user) {
   ui.retry.hidden = true;
   owner = user.id;
   draftKey = key + ':cloud:' + config.url + ':' + owner;
-  ui.login.hidden = true;
-  ui.out.hidden = false;
+  ui.signin.open = false;
+  ui.signin.hidden = true;
+  ui.account.hidden = false;
   lock(true);
   message('Loading cloud save…');
   try {
@@ -222,7 +223,7 @@ if (!config?.url || !config.publishableKey) {
     if (error) throw error;
     if (data.session) await connect(data.session.user);
     else {
-      ui.login.hidden = false;
+      ui.signin.hidden = false;
       lock(false);
       message('Sign in with the same account on both devices.');
     }
