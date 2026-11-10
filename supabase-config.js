@@ -1,0 +1,4 @@
+window.brackenSupabase = {
+  url: '',
+  publishableKey: '',
+};
