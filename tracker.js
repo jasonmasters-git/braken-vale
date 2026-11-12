@@ -1,4 +1,4 @@
-const key='bracken-vale-equipment-edition-v1';
+const key='bracken-vale-tracker-v1';
 const slots=['Head','Cloak','Main hand','Ranged','Body armor','Off hand','Accessory','Pack'];
 const stats=['Agility','Speed','Combat Skill','Toughness','Savvy','Armor (melee)','Armor (ranged)','XP','Injury turns'];
 const make=(name,role,equipment={},notes='')=>({name,role,equipment,notes,stats:{}});

@@ -47,7 +47,7 @@ function queueSave() {
 }
 
 function cloudQuery() {
-  return client.from('campaign_saves_equipment');
+  return client.from('campaign_saves');
 }
 
 async function fetchSave() {
