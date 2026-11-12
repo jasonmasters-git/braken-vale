@@ -1,4 +1,4 @@
-const key='bracken-vale-tracker-v1';
+const key='bracken-vale-equipment-edition-v1';
 const slots=['Head','Cloak','Main hand','Ranged','Body armor','Off hand','Accessory','Pack'];
 const stats=['Agility','Speed','Combat Skill','Toughness','Savvy','Armor (melee)','Armor (ranged)','XP','Injury turns'];
 const make=(name,role,equipment={},notes='')=>({name,role,equipment,notes,stats:{}});
@@ -17,8 +17,16 @@ function render(){
  document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-current',b.dataset.view===view));
  if(view==='warband'){
  const c=state.characters[selected];
- const buttons=(from,to)=>slots.slice(from,to).map(s=>'<button class="slot" data-slot="'+s+'"><b>'+s+'</b><span>'+esc(c.equipment[s]||'+ Equip item')+'</span></button>').join('');
- app.innerHTML='<section class="row"><h2>Warband</h2><button id="add" class="primary">+ Character</button></section><div class="card tabs" aria-label="Characters">'+state.characters.map((m,i)=>'<button data-character="'+i+'" aria-current="'+(i===selected)+'">'+esc(m.name||'Unnamed')+'</button>').join('')+'</div><div class="layout"><section class="card"><div class="eyebrow">Equipment</div><h2 id="characterTitle">'+esc(c.name||'Unnamed')+'</h2><div class="doll"><div class="slots">'+buttons(0,4)+'</div>'+figure+'<div class="slots">'+buttons(4,8)+'</div></div><p class="subtle">Tap a slot to equip, replace, or remove an item.</p></section><section class="card stack"><h3>Character sheet</h3><div class="fields">'+field('Name','character','name',c.name)+field('Role / background','character','role',c.role)+'</div><div class="fields">'+stats.map(s=>field(s,'stats',s,c.stats[s])).join('')+'</div>'+field('Skills, spells, traits and injuries','character','notes',c.notes,true)+'<div><button id="remove">Remove character</button></div></section></div>';
+ const buttons = (from, to) => slots.slice(from, to).map(slot => {
+   const name = c.equipment[slot];
+   const item = name && findCatalogItem(name, slot);
+   const tipId = 'equipment-tip-' + slots.indexOf(slot);
+   return '<div class="slot-wrap"><button type="button" class="slot" data-slot="' + slot + '"' +
+     (item ? ' aria-describedby="' + tipId + '"' : '') + '><b>' + slot + '</b><span>' +
+     esc(name || '+ Equip item') + '</span></button>' +
+     (item ? '<span class="item-tip" id="' + tipId + '" role="tooltip">' + itemDetails(item) + '</span>' : '') + '</div>';
+ }).join('');
+ app.innerHTML='<section class="row"><h2>Warband</h2><button id="add" class="primary">+ Character</button></section><div class="card tabs" aria-label="Characters">'+state.characters.map((m,i)=>'<button data-character="'+i+'" aria-current="'+(i===selected)+'">'+esc(m.name||'Unnamed')+'</button>').join('')+'</div><div class="layout"><section class="card"><div class="eyebrow">Equipment</div><h2 id="characterTitle">'+esc(c.name||'Unnamed')+'</h2><div class="doll"><div class="slots">'+buttons(0,4)+'</div>'+figure+'<div class="slots">'+buttons(4,8)+'</div></div><p class="subtle">Tap a slot to browse gear and see item details. Hover over equipped gear for its stats.</p></section><section class="card stack"><h3>Character sheet</h3><div class="fields">'+field('Name','character','name',c.name)+field('Role / background','character','role',c.role)+'</div><div class="fields">'+stats.map(s=>field(s,'stats',s,c.stats[s])).join('')+'</div>'+field('Skills, spells, traits and injuries','character','notes',c.notes,true)+'<div><button id="remove">Remove character</button></div></section></div>';
  }
  if(view==='campaign'){
  const c=state.campaign;
@@ -35,13 +43,69 @@ document.addEventListener('click',e=>{
  if(b.dataset.character!==undefined){selected=Number(b.dataset.character);render()}
  if(b.id==='add'){state.characters.push(make('New character',''));selected=state.characters.length-1;save();render();app.querySelector('[data-key=name]').focus()}
  if(b.id==='remove'&&confirm('Remove this character and their equipment?')){state.characters.splice(selected,1);if(!state.characters.length)state.characters.push(make('New character',''));selected=Math.max(0,selected-1);save();render()}
- if(b.dataset.slot){activeSlot=b.dataset.slot;document.querySelector('#slotTitle').textContent=activeSlot;form.elements.namedItem('item').value=state.characters[selected].equipment[activeSlot]||'';dialog.showModal()}
+ if (b.dataset.slot) openEquipment(b.dataset.slot);
+ if (b.dataset.catalogIndex !== undefined) {
+   const item = itemCatalog[Number(b.dataset.catalogIndex)];
+   if (item && item.slots.includes(activeSlot)) equipItem(item.name);
+ }
  if(b.dataset.delete!==undefined&&confirm('Delete this journal entry?')){state.journal.splice(Number(b.dataset.delete),1);save();render()}
 });
 app.addEventListener('input',e=>{const {scope,key:k}=e.target.dataset;if(!scope)return;const c=state.characters[selected];const target={character:c,stats:c.stats,campaign:state.campaign}[scope];target[k]=e.target.value;save();if(k==='name'){app.querySelector('#characterTitle').textContent=target[k]||'Unnamed';app.querySelector('[data-character="'+selected+'"]').textContent=target[k]||'Unnamed'}if(scope==='campaign')subtitle()});
 app.addEventListener('submit',e=>{if(e.target.id!=='entry')return;e.preventDefault();const note=e.target.elements.note.value.trim();if(note){state.journal.unshift({turn:state.campaign.turn||'—',note});save();render()}});
 document.querySelector('#cancelEquip').onclick=()=>dialog.close();
-form.onsubmit=e=>{e.preventDefault();const equipment=state.characters[selected].equipment;const item=form.elements.namedItem('item').value.trim();if(item)equipment[activeSlot]=item;else delete equipment[activeSlot];save();dialog.close();render();app.querySelector('[data-slot="'+activeSlot+'"]').focus()};
+const itemSearch = document.querySelector('#item-search');
+const itemResults = document.querySelector('#item-results');
+const equippedDetails = document.querySelector('#equipped-details');
+
+function itemDetails(item) {
+  return [item.stats, item.properties, item.description]
+    .filter(Boolean).map(value => '<span>' + esc(value) + '</span>').join('');
+}
+
+function renderItemResults() {
+  const query = normalizeItem(itemSearch.value);
+  itemResults.innerHTML = itemCatalog.map((item, index) => {
+    if (!item.slots.includes(activeSlot) ||
+        !normalizeItem([item.name, item.stats, item.properties].join(' ')).includes(query)) return '';
+    return '<li><button type="button" data-catalog-index="' + index + '"><strong>' +
+      esc(item.name) + '</strong>' + itemDetails(item) + '</button></li>';
+  }).join('') || '<li>No catalog matches. You can enter a custom item below.</li>';
+}
+
+function openEquipment(slot) {
+  activeSlot = slot;
+  const equipped = state.characters[selected].equipment[slot] || '';
+  const item = findCatalogItem(equipped, slot);
+  document.querySelector('#slotTitle').textContent = slot;
+  equippedDetails.innerHTML = equipped ? '<strong>Equipped · ' + esc(equipped) + '</strong>' +
+    (item ? itemDetails(item) : '<span>Custom item</span>') : '';
+  equippedDetails.hidden = !equipped;
+  form.elements.namedItem('item').value = equipped;
+  itemSearch.value = '';
+  itemResults.scrollTop = 0;
+  renderItemResults();
+  dialog.showModal();
+}
+
+function equipItem(name) {
+  const equipment = state.characters[selected].equipment;
+  if (name) equipment[activeSlot] = name;
+  else delete equipment[activeSlot];
+  save();
+  dialog.close();
+  render();
+  app.querySelector('[data-slot="' + activeSlot + '"]').focus();
+}
+
+itemSearch.addEventListener('input', renderItemResults);
+itemSearch.addEventListener('keydown', event => {
+  if (event.key === 'Enter') event.preventDefault();
+});
+document.querySelector('#unequip').onclick = () => equipItem('');
+form.onsubmit = event => {
+  event.preventDefault();
+  equipItem(form.elements.namedItem('item').value.trim());
+};
 document.querySelector('#export').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({version:1,...state},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='bracken-vale-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 const file=document.querySelector('#file');
 document.querySelector('#import').onclick=()=>file.click();
